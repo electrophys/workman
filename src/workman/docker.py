@@ -7,8 +7,10 @@ from datetime import date
 import click
 
 from workman.config import (
+    ImageConfig,
     ProjectConfig,
     WorkspaceConfig,
+    get_build_context,
     get_docker_projects,
     get_effective_latest_tag,
 )
@@ -16,30 +18,29 @@ from workman.config import (
 DATE_TAG_PATTERN = re.compile(r"^(\d{8})-(\d+)$")
 
 
-def _has_registry(image: str) -> bool:
+def _has_registry(image_name: str) -> bool:
     """Check if an image name includes a registry (has a dot before the first slash)."""
-    if "/" not in image:
+    if "/" not in image_name:
         return False
-    prefix = image.split("/")[0]
+    prefix = image_name.split("/")[0]
     return "." in prefix or ":" in prefix
 
 
-def _get_local_tags(image: str) -> list[str]:
+def _get_local_tags(image_name: str) -> list[str]:
     """List local tags for a given image name."""
     result = subprocess.run(
-        ["docker", "image", "ls", "--format", "{{.Tag}}", image],
+        ["docker", "image", "ls", "--format", "{{.Tag}}", image_name],
         capture_output=True,
         text=True,
     )
     return [t.strip() for t in result.stdout.strip().splitlines() if t.strip()]
 
 
-def _get_registry_tags(image: str) -> list[str]:
-    """Try to list tags from the registry using docker manifest inspect or skopeo."""
-    # Use skopeo if available, otherwise fall back to nothing
+def _get_registry_tags(image_name: str) -> list[str]:
+    """Try to list tags from the registry using skopeo."""
     try:
         result = subprocess.run(
-            ["skopeo", "list-tags", f"docker://{image}"],
+            ["skopeo", "list-tags", f"docker://{image_name}"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -63,13 +64,13 @@ def _max_n_for_today(tags: list[str], today: str) -> int:
     return max_n
 
 
-def _next_tag(image: str) -> str:
+def _next_tag(image_name: str) -> str:
     """Determine the next YYYYMMDD-N tag for an image."""
     today = date.today().strftime("%Y%m%d")
 
-    tags = _get_local_tags(image)
-    if _has_registry(image):
-        tags.extend(_get_registry_tags(image))
+    tags = _get_local_tags(image_name)
+    if _has_registry(image_name):
+        tags.extend(_get_registry_tags(image_name))
 
     n = _max_n_for_today(tags, today) + 1
     return f"{today}-{n}"
@@ -84,68 +85,76 @@ def build_images(ws: WorkspaceConfig, names: tuple[str, ...]) -> None:
         return
 
     for proj in projects:
-        tag = _next_tag(proj.image)
         latest = get_effective_latest_tag(ws, proj)
 
-        click.echo(
-            f"{click.style(proj.name, bold=True)}: "
-            f"building {proj.image}:{tag}"
-        )
+        for img in proj.images:
+            tag = _next_tag(img.name)
+            context = get_build_context(proj, img)
 
-        cmd = [
-            "docker", "build",
-            "-t", f"{proj.image}:{tag}",
-            "-t", f"{proj.image}:{latest}",
-            str(proj.path),
-        ]
-
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            raise click.ClickException(
-                f"Docker build failed for {proj.name}"
+            click.echo(
+                f"{click.style(proj.name, bold=True)}: "
+                f"building {img.name}:{tag} in {context}"
             )
 
-        click.echo(
-            f"  tagged {proj.image}:{tag} and {proj.image}:{latest}"
-        )
+            cmd = [
+                "docker", "build",
+                "-t", f"{img.name}:{tag}",
+                "-t", f"{img.name}:{latest}",
+            ]
+            if img.dockerfile:
+                cmd.extend(["-f", str(context / img.dockerfile)])
+            cmd.append(str(context))
+
+            result = subprocess.run(cmd)
+            if result.returncode != 0:
+                raise click.ClickException(
+                    f"Docker build failed for {proj.name} ({img.name})"
+                )
+
+            click.echo(
+                f"  tagged {img.name}:{tag} and {img.name}:{latest}"
+            )
 
 
 def push_images(ws: WorkspaceConfig, names: tuple[str, ...]) -> None:
     """Push images that have a registry in the name."""
     projects = get_docker_projects(ws, names or None)
-    pushable = [p for p in projects if _has_registry(p.image)]
 
-    if not pushable:
-        click.echo("No projects with registry images found.")
-        return
-
-    for proj in pushable:
+    found_any = False
+    for proj in projects:
         latest = get_effective_latest_tag(ws, proj)
-        tags = _get_local_tags(proj.image)
 
-        # Find the most recent date tag
-        today_tags = []
-        for t in tags:
-            m = DATE_TAG_PATTERN.match(t)
-            if m:
-                today_tags.append((t, m.group(1), int(m.group(2))))
+        for img in proj.images:
+            if not _has_registry(img.name):
+                continue
+            found_any = True
+            tags = _get_local_tags(img.name)
 
-        if not today_tags:
-            click.echo(
-                f"{click.style(proj.name, bold=True)}: no date-tagged images to push"
-            )
-            continue
+            date_tags = []
+            for t in tags:
+                m = DATE_TAG_PATTERN.match(t)
+                if m:
+                    date_tags.append((t, m.group(1), int(m.group(2))))
 
-        # Sort by date desc then N desc, push the most recent
-        today_tags.sort(key=lambda x: (x[1], x[2]), reverse=True)
-        most_recent = today_tags[0][0]
+            if not date_tags:
+                click.echo(
+                    f"{click.style(proj.name, bold=True)} ({img.name}): "
+                    f"no date-tagged images to push"
+                )
+                continue
 
-        for push_tag in (most_recent, latest):
-            ref = f"{proj.image}:{push_tag}"
-            click.echo(f"{click.style(proj.name, bold=True)}: pushing {ref}")
-            result = subprocess.run(["docker", "push", ref])
-            if result.returncode != 0:
-                raise click.ClickException(f"Push failed for {ref}")
+            date_tags.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            most_recent = date_tags[0][0]
+
+            for push_tag in (most_recent, latest):
+                ref = f"{img.name}:{push_tag}"
+                click.echo(f"{click.style(proj.name, bold=True)}: pushing {ref}")
+                result = subprocess.run(["docker", "push", ref])
+                if result.returncode != 0:
+                    raise click.ClickException(f"Push failed for {ref}")
+
+    if not found_any:
+        click.echo("No projects with registry images found.")
 
 
 def prune_images(ws: WorkspaceConfig) -> None:
@@ -158,32 +167,34 @@ def prune_images(ws: WorkspaceConfig) -> None:
 
     for proj in projects:
         latest = get_effective_latest_tag(ws, proj)
-        tags = _get_local_tags(proj.image)
 
-        date_tags = []
-        for t in tags:
-            m = DATE_TAG_PATTERN.match(t)
-            if m:
-                date_tags.append((t, m.group(1), int(m.group(2))))
+        for img in proj.images:
+            tags = _get_local_tags(img.name)
 
-        # Sort by date desc then N desc
-        date_tags.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            date_tags = []
+            for t in tags:
+                m = DATE_TAG_PATTERN.match(t)
+                if m:
+                    date_tags.append((t, m.group(1), int(m.group(2))))
 
-        # Keep the most recent date tag and the latest tag; remove everything else
-        keep = {latest}
-        if date_tags:
-            keep.add(date_tags[0][0])
+            date_tags.sort(key=lambda x: (x[1], x[2]), reverse=True)
 
-        to_remove = [t for t in tags if t not in keep and t != "<none>"]
+            keep = {latest}
+            if date_tags:
+                keep.add(date_tags[0][0])
 
-        if not to_remove:
-            click.echo(f"{click.style(proj.name, bold=True)}: nothing to prune")
-            continue
+            to_remove = [t for t in tags if t not in keep and t != "<none>"]
 
-        for t in to_remove:
-            ref = f"{proj.image}:{t}"
-            click.echo(f"{click.style(proj.name, bold=True)}: removing {ref}")
-            subprocess.run(
-                ["docker", "rmi", ref],
-                capture_output=True,
-            )
+            if not to_remove:
+                click.echo(
+                    f"{click.style(proj.name, bold=True)} ({img.name}): nothing to prune"
+                )
+                continue
+
+            for t in to_remove:
+                ref = f"{img.name}:{t}"
+                click.echo(f"{click.style(proj.name, bold=True)}: removing {ref}")
+                subprocess.run(
+                    ["docker", "rmi", ref],
+                    capture_output=True,
+                )

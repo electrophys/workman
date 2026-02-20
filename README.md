@@ -83,18 +83,31 @@ wm init
 You can also create a `.workman.yaml` manually in your workspace root:
 
 ```yaml
-latest_tag: latest        # default tag applied alongside the date tag
+latest_tag: latest            # default tag applied alongside the date tag
 
 projects:
   myapp:
-    image: registry.example.com/myapp
-    latest_tag: stable    # per-project override
+    latest_tag: stable        # per-project override
+    images:
+      - name: registry.example.com/myapp
   backend:
-    image: myorg/backend
+    images:
+      - name: myorg/backend-api
+        dockerfile: Dockerfile.api
+        context: services/backend   # relative to workspace root
+      - name: myorg/backend-worker
+        dockerfile: Dockerfile.worker
 ```
 
+Each project has an `images` list. Each image entry supports:
+
+- **`name`** (required) — the Docker image name. Include a registry prefix for push support.
+- **`dockerfile`** (optional) — Dockerfile path relative to the build context. Defaults to `Dockerfile`.
+- **`context`** (optional) — build context directory relative to the workspace root. Defaults to the project subfolder.
+
+Top-level and per-project options:
+
 - **`latest_tag`** (top-level) — the tag applied to every new build alongside the `YYYYMMDD-N` tag. Defaults to `latest`.
-- **`projects.<name>.image`** — the Docker image name. Include a registry prefix for push support.
 - **`projects.<name>.latest_tag`** — override the global `latest_tag` for this project.
 
 ## License

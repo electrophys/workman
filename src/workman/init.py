@@ -17,8 +17,13 @@ def _get_subdirs(workspace_root: Path) -> list[Path]:
     )
 
 
-def _has_dockerfile(path: Path) -> bool:
-    return (path / "Dockerfile").exists()
+def _find_dockerfiles(path: Path) -> list[str]:
+    """Return Dockerfile names found in a directory (Dockerfile, Dockerfile.*)."""
+    results = []
+    for f in sorted(path.iterdir()):
+        if f.is_file() and (f.name == "Dockerfile" or f.name.startswith("Dockerfile.")):
+            results.append(f.name)
+    return results
 
 
 def _get_local_images() -> dict[str, str]:
@@ -36,10 +41,7 @@ def _get_local_images() -> dict[str, str]:
         repo = line.strip()
         if not repo or repo == "<none>":
             continue
-        # Map the final path component to the full repo name.
-        # e.g. "registry.example.com/org/myapp" -> "myapp" => full name
         basename = repo.rsplit("/", 1)[-1]
-        # Keep the first (most specific) match if there are duplicates.
         if basename not in images:
             images[basename] = repo
 
@@ -60,33 +62,40 @@ def init_workspace(workspace_root: Path) -> None:
     if not subdirs:
         raise click.ClickException("No subdirectories found in workspace.")
 
-    # Fetch local Docker images for matching
     local_images = _get_local_images()
 
-    projects: dict[str, dict[str, str]] = {}
+    projects: dict[str, dict] = {}
 
     for subdir in subdirs:
         name = subdir.name
-        has_docker = _has_dockerfile(subdir)
+        dockerfiles = _find_dockerfiles(subdir)
         matched_image = local_images.get(name)
 
-        if has_docker or matched_image:
-            entry: dict[str, str] = {}
-            if matched_image:
-                entry["image"] = matched_image
-            elif has_docker:
-                entry["image"] = name
-            projects[name] = entry
-            status_parts = []
-            if has_docker:
-                status_parts.append("Dockerfile")
-            if matched_image:
-                status_parts.append(f"image: {matched_image}")
-            click.echo(
-                f"  {click.style(name, bold=True)}: {', '.join(status_parts)}"
-            )
-        else:
+        if not dockerfiles and not matched_image:
             click.echo(f"  {click.style(name, bold=True)}: skipped (no Dockerfile or matching image)")
+            continue
+
+        images: list[dict[str, str]] = []
+
+        if len(dockerfiles) <= 1:
+            # Single or no Dockerfile — one image entry
+            image_name = matched_image or name
+            entry: dict[str, str] = {"name": image_name}
+            if dockerfiles and dockerfiles[0] != "Dockerfile":
+                entry["dockerfile"] = dockerfiles[0]
+            images.append(entry)
+        else:
+            # Multiple Dockerfiles — one image per Dockerfile
+            for df in dockerfiles:
+                suffix = df.removeprefix("Dockerfile").lstrip(".")
+                image_name = f"{matched_image or name}-{suffix}" if suffix else (matched_image or name)
+                entry = {"name": image_name, "dockerfile": df}
+                images.append(entry)
+
+        projects[name] = {"images": images}
+
+        desc = ", ".join(img["name"] for img in images)
+        click.echo(f"  {click.style(name, bold=True)}: {desc}")
 
     config: dict = {"latest_tag": "latest"}
     if projects:

@@ -24,6 +24,15 @@ def cli(ctx: click.Context, workspace: Path | None) -> None:
 
 @cli.command()
 @click.pass_context
+def init(ctx: click.Context) -> None:
+    """Scan the workspace and generate a .workman.yaml config file."""
+    from workman.init import init_workspace
+
+    init_workspace(ctx.obj["workspace"])
+
+
+@cli.command()
+@click.pass_context
 def status(ctx: click.Context) -> None:
     """Show git status for all repositories in the workspace."""
     from workman.git import show_status

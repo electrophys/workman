@@ -54,12 +54,15 @@ def load_config(workspace_root: Path | None = None) -> WorkspaceConfig:
 
         images: list[ImageConfig] = []
         for img_raw in proj_raw.get("images") or []:
-            ctx_raw = img_raw.get("context")
-            images.append(ImageConfig(
-                name=img_raw["name"],
-                dockerfile=img_raw.get("dockerfile"),
-                context=root / ctx_raw if ctx_raw else None,
-            ))
+            if isinstance(img_raw, str):
+                images.append(ImageConfig(name=img_raw))
+            else:
+                ctx_raw = img_raw.get("context")
+                images.append(ImageConfig(
+                    name=img_raw["name"],
+                    dockerfile=img_raw.get("dockerfile"),
+                    context=root / ctx_raw if ctx_raw else None,
+                ))
 
         projects[name] = ProjectConfig(
             name=name,

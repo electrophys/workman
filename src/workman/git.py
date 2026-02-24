@@ -21,7 +21,20 @@ def get_git_status(repo_path: Path) -> str:
 
 
 def show_status(workspace_root: Path) -> None:
-    """Print git status for every git repo under the workspace root."""
+    """Print git status for the workspace repo (if any) and all subproject repos."""
+
+    # Workspace-level repo
+    if is_git_repo(workspace_root):
+        status = get_git_status(workspace_root)
+        header = click.style("workspace", bold=True, fg="cyan")
+        if status:
+            click.echo(f"{header}:")
+            for line in status.splitlines():
+                click.echo(f"  {line}")
+        else:
+            click.echo(f"{header}: {click.style('clean', fg='green')}")
+
+    # Subproject repos
     subdirs = sorted(
         p for p in workspace_root.iterdir()
         if p.is_dir() and not p.name.startswith(".")
@@ -29,7 +42,7 @@ def show_status(workspace_root: Path) -> None:
 
     repos = [d for d in subdirs if is_git_repo(d)]
 
-    if not repos:
+    if not repos and not is_git_repo(workspace_root):
         click.echo("No git repositories found in workspace.")
         return
 

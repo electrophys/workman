@@ -18,11 +18,13 @@ uv run wm status     # Example: git status across all subprojects
 
 This is a `uv` project with a `src/` layout. The CLI entry point is `wm = workman.cli:cli` (defined in pyproject.toml).
 
-- **cli.py** — Click group with subcommands: `status`, `build`, `push`, `prune`, `clean`. Accepts `-C` to override workspace root.
-- **config.py** — Loads `.workman.yaml`, returns `WorkspaceConfig` / `ProjectConfig` dataclasses. Provides `get_docker_projects()` and `get_effective_latest_tag()` helpers.
-- **git.py** — `show_status()` scans subdirectories for `.git/`, runs `git status --short`.
+- **cli.py** — Click group with subcommands: `status`, `init`, `build`, `push`, `prune`, `clean`, `gitignore`. Accepts `-C` to override workspace root.
+- **config.py** — Loads `.workman.yaml`, returns `WorkspaceConfig` / `ProjectConfig` / `ImageConfig` dataclasses. Provides `get_docker_projects()` and `get_effective_latest_tag()` helpers.
+- **git.py** — `show_status()` shows workspace repo status (if the root is a git repo), then scans subdirectories for `.git/` and runs `git status --short`.
 - **docker.py** — `build_images()`, `push_images()`, `prune_images()`. Tagging uses `YYYYMMDD-N` pattern; N is determined by checking local tags (and registry tags via skopeo if available).
 - **cleanup.py** — `clean_workspace()` removes `dist/`, `build/`, `__pycache__/`, `*.egg-info/` recursively.
+- **gitignore.py** — `update_gitignore()` manages a block in `.gitignore` to exclude subproject folders from the workspace repo.
+- **init.py** — `init_workspace()` scans subdirectories for Dockerfiles and Docker images, generates `.workman.yaml` and updates `.gitignore`.
 
 ## Key Concepts
 

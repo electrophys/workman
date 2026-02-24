@@ -7,6 +7,7 @@ import click
 import yaml
 
 from workman.config import CONFIG_FILENAME
+from workman.gitignore import update_gitignore
 
 
 def _get_subdirs(workspace_root: Path) -> list[Path]:
@@ -105,3 +106,7 @@ def init_workspace(workspace_root: Path) -> None:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     click.echo(f"\nWrote {CONFIG_FILENAME} with {len(projects)} project(s).")
+
+    # Update .gitignore with all subdirectory names
+    all_subdir_names = [d.name for d in subdirs]
+    update_gitignore(workspace_root, all_subdir_names)

@@ -74,6 +74,16 @@ def prune(ctx: click.Context) -> None:
 
 @cli.command()
 @click.pass_context
+def gitignore(ctx: click.Context) -> None:
+    """Update .gitignore to exclude subproject folders from the workspace repo."""
+    ws = load_config(ctx.obj["workspace"])
+    from workman.gitignore import update_gitignore
+
+    update_gitignore(ctx.obj["workspace"], list(ws.projects.keys()))
+
+
+@cli.command()
+@click.pass_context
 def clean(ctx: click.Context) -> None:
     """Remove Python build artifacts from all projects."""
     from workman.cleanup import clean_workspace

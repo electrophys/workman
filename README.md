@@ -4,12 +4,13 @@ CLI tool for managing a workspace of projects. A workspace is a directory contai
 
 Workman lets you:
 
-- View **git status** across all subprojects at once
+- View **git status** across the workspace repo and all subprojects at once
 - **Build** Docker images with automatic date-based tagging (`YYYYMMDD-N`)
 - **Push** images to registries
 - **Prune** old Docker images, keeping only the most recent
 - **Clean** Python build artifacts across all projects
 - **Initialize** a workspace config by scanning projects and local Docker images
+- **Manage .gitignore** to exclude subproject folders from the workspace repo
 
 ## Installation
 
@@ -49,12 +50,13 @@ Options:
   --help        Show this message and exit.
 
 Commands:
-  init    Scan the workspace and generate a .workman.yaml config file.
-  status  Show git status for all repositories in the workspace.
-  build   Build docker images for projects (all if none specified).
-  push    Push docker images to their registries.
-  prune   Remove all docker images except the most recent for each project.
-  clean   Remove Python build artifacts from all projects.
+  init       Scan the workspace and generate a .workman.yaml config file.
+  status     Show git status for the workspace repo and all subprojects.
+  build      Build docker images for projects (all if none specified).
+  push       Push docker images to their registries.
+  prune      Remove all docker images except the most recent for each project.
+  clean      Remove Python build artifacts from all projects.
+  gitignore  Update .gitignore to exclude subproject folders.
 ```
 
 Use `-C` to target a workspace without `cd`-ing into it:
@@ -72,11 +74,25 @@ wm push myapp             # push only myapp
 
 ### Initialize a workspace
 
-Generate a `.workman.yaml` automatically by scanning subdirectories for Dockerfiles and matching folder names against local Docker images:
+Generate a `.workman.yaml` automatically by scanning subdirectories for Dockerfiles and matching folder names against local Docker images. This also creates a `.gitignore` to exclude subproject folders from the workspace repo:
 
 ```bash
 wm init
 ```
+
+### Manage .gitignore
+
+If you add or remove projects from `.workman.yaml`, refresh the `.gitignore`:
+
+```bash
+wm gitignore
+```
+
+This maintains a managed block in `.gitignore` listing each project folder, while preserving any entries you've added manually.
+
+### Workspace as a git repo
+
+The workspace root can itself be a git repo for tracking workspace configuration (`.workman.yaml`, `.devcontainer/`, VS Code settings, etc.). When it is, `wm status` shows the workspace repo's status first, followed by subproject statuses. Use `wm init` or `wm gitignore` to keep subproject folders excluded.
 
 ## Configuration
 

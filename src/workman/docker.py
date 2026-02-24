@@ -157,9 +157,9 @@ def push_images(ws: WorkspaceConfig, names: tuple[str, ...]) -> None:
         click.echo("No projects with registry images found.")
 
 
-def prune_images(ws: WorkspaceConfig) -> None:
+def prune_images(ws: WorkspaceConfig, names: tuple[str, ...] | None = None) -> None:
     """Remove all images except the most recent for each project."""
-    projects = get_docker_projects(ws)
+    projects = get_docker_projects(ws, names)
 
     if not projects:
         click.echo("No docker-enabled projects found.")

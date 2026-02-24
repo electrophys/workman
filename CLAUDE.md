@@ -19,7 +19,7 @@ uv run wm status     # Example: git status across all subprojects
 This is a `uv` project with a `src/` layout. The CLI entry point is `wm = workman.cli:cli` (defined in pyproject.toml).
 
 - **cli.py** — Click group with subcommands: `status`, `init`, `build`, `push`, `prune`, `clean`, `gitignore`. Accepts `-C` to override workspace root.
-- **config.py** — Loads `.workman.yaml`, returns `WorkspaceConfig` / `ProjectConfig` / `ImageConfig` dataclasses. Provides `get_docker_projects()` and `get_effective_latest_tag()` helpers.
+- **config.py** — Loads `.workman.yaml`, returns `WorkspaceConfig` / `ProjectConfig` / `ImageConfig` dataclasses. Provides `get_docker_projects()`, `get_effective_latest_tag()`, and `resolve_projects()` helpers.
 - **git.py** — `show_status()` shows workspace repo status (if the root is a git repo), then scans subdirectories for `.git/` and runs `git status --short`.
 - **docker.py** — `build_images()`, `push_images()`, `prune_images()`. Tagging uses `YYYYMMDD-N` pattern; N is determined by checking local tags (and registry tags via skopeo if available).
 - **cleanup.py** — `clean_workspace()` removes `dist/`, `build/`, `__pycache__/`, `*.egg-info/` recursively.
@@ -30,3 +30,4 @@ This is a `uv` project with a `src/` layout. The CLI entry point is `wm = workma
 
 - **Docker image tagging**: Pattern `YYYYMMDD-N` where N starts at 1 per day, determined by existing tags on system or remote registry. A configurable "latest" tag (global default with per-project override) is also applied.
 - **Registry detection**: An image is considered registry-hosted if the portion before the first `/` contains a `.` or `:`.
+- **Project groups**: Named subsets of projects defined under `groups:` in config. Selected with `@name` on the CLI. `@all` is built-in. `default_group` sets the default when no args given.

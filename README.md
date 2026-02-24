@@ -65,11 +65,16 @@ Use `-C` to target a workspace without `cd`-ing into it:
 wm -C /path/to/workspace status
 ```
 
-### Build and push specific projects
+### Target specific projects or groups
+
+Pass project names or `@group` references to any command:
 
 ```bash
 wm build myapp backend    # build only these two
 wm push myapp             # push only myapp
+wm status @frontend       # status for the frontend group
+wm build @backend extra   # build the backend group plus 'extra'
+wm clean @all             # explicitly target all projects
 ```
 
 ### Initialize a workspace
@@ -125,6 +130,23 @@ Top-level and per-project options:
 
 - **`latest_tag`** (top-level) — the tag applied to every new build alongside the `YYYYMMDD-N` tag. Defaults to `latest`.
 - **`projects.<name>.latest_tag`** — override the global `latest_tag` for this project.
+
+### Groups
+
+Define named subsets of projects for convenient targeting:
+
+```yaml
+groups:
+  frontend:
+    - myapp
+  backend:
+    - backend
+  default_group: backend   # used when no projects are specified
+```
+
+- Use `@groupname` on any command: `wm build @frontend`
+- `@all` is a built-in group meaning every project
+- `default_group` sets which group is used when you run a command with no arguments (e.g. `wm build` with a default builds only that group instead of everything)
 
 ## License
 

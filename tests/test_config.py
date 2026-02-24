@@ -10,6 +10,7 @@ from workman.config import (
     get_docker_projects,
     get_effective_latest_tag,
     load_config,
+    resolve_projects,
 )
 
 
@@ -244,3 +245,87 @@ class TestGetDockerProjects:
         ws = load_config(tmp_path)
         with pytest.raises(ValueError, match="nope"):
             get_docker_projects(ws, ("nope",))
+
+
+class TestLoadGroups:
+    def test_no_groups(self, tmp_path):
+        _write_config(tmp_path, {"projects": {"a": {}}})
+        ws = load_config(tmp_path)
+        assert ws.groups == {}
+        assert ws.default_group is None
+
+    def test_loads_groups(self, tmp_path):
+        _write_config(tmp_path, {
+            "projects": {"a": {}, "b": {}, "c": {}},
+            "groups": {
+                "frontend": ["a", "b"],
+                "backend": ["c"],
+            },
+        })
+        ws = load_config(tmp_path)
+        assert ws.groups == {"frontend": ["a", "b"], "backend": ["c"]}
+        assert ws.default_group is None
+
+    def test_loads_default_group(self, tmp_path):
+        _write_config(tmp_path, {
+            "projects": {"a": {}, "b": {}},
+            "groups": {
+                "fe": ["a"],
+                "default_group": "fe",
+            },
+        })
+        ws = load_config(tmp_path)
+        assert ws.groups == {"fe": ["a"]}
+        assert ws.default_group == "fe"
+
+
+class TestResolveProjects:
+    def _ws(self):
+        return WorkspaceConfig(
+            root=Path("/ws"),
+            projects={
+                "a": None, "b": None, "c": None, "d": None,
+            },
+            groups={"frontend": ["a", "b"], "backend": ["c", "d"]},
+        )
+
+    def test_no_args_no_default_returns_none(self):
+        ws = self._ws()
+        assert resolve_projects(ws, ()) is None
+
+    def test_no_args_with_default_group(self):
+        ws = self._ws()
+        ws.default_group = "frontend"
+        assert resolve_projects(ws, ()) == ("a", "b")
+
+    def test_at_all_returns_none(self):
+        ws = self._ws()
+        assert resolve_projects(ws, ("@all",)) is None
+
+    def test_at_all_mixed_still_returns_none(self):
+        ws = self._ws()
+        assert resolve_projects(ws, ("a", "@all")) is None
+
+    def test_expand_group(self):
+        ws = self._ws()
+        assert resolve_projects(ws, ("@frontend",)) == ("a", "b")
+
+    def test_expand_multiple_groups(self):
+        ws = self._ws()
+        result = resolve_projects(ws, ("@frontend", "@backend"))
+        assert result == ("a", "b", "c", "d")
+
+    def test_mix_names_and_groups(self):
+        ws = self._ws()
+        result = resolve_projects(ws, ("c", "@frontend"))
+        assert result == ("c", "a", "b")
+
+    def test_deduplicates(self):
+        ws = self._ws()
+        result = resolve_projects(ws, ("a", "@frontend"))
+        assert result == ("a", "b")
+
+    def test_unknown_group_raises(self):
+        ws = self._ws()
+        with pytest.raises(ValueError, match="Unknown group: nope"):
+            resolve_projects(ws, ("@nope",))

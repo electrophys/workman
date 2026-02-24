@@ -30,6 +30,8 @@ class WorkspaceConfig:
     root: Path
     latest_tag: str = DEFAULT_LATEST_TAG
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
+    groups: dict[str, list[str]] = field(default_factory=dict)
+    default_group: str | None = None
 
 
 def load_config(workspace_root: Path | None = None) -> WorkspaceConfig:
@@ -71,7 +73,53 @@ def load_config(workspace_root: Path | None = None) -> WorkspaceConfig:
             latest_tag=proj_raw.get("latest_tag"),
         )
 
-    return WorkspaceConfig(root=root, latest_tag=latest_tag, projects=projects)
+    groups: dict[str, list[str]] = {}
+    for gname, members in (raw.get("groups") or {}).items():
+        if gname == "default_group":
+            continue
+        groups[gname] = list(members or [])
+
+    default_group = (raw.get("groups") or {}).get("default_group")
+
+    return WorkspaceConfig(
+        root=root,
+        latest_tag=latest_tag,
+        projects=projects,
+        groups=groups,
+        default_group=default_group,
+    )
+
+
+def resolve_projects(ws: WorkspaceConfig, args: tuple[str, ...]) -> tuple[str, ...] | None:
+    """Expand @group references and return project names, or None for all.
+
+    - No args + no default_group → None (all projects)
+    - No args + default_group set → expand that group
+    - @all → None (all projects)
+    - @groupname → expand to group members
+    - Plain names pass through unchanged
+    """
+    if not args:
+        if ws.default_group:
+            return resolve_projects(ws, (f"@{ws.default_group}",))
+        return None
+
+    names: list[str] = []
+    for arg in args:
+        if not arg.startswith("@"):
+            names.append(arg)
+            continue
+
+        group_name = arg[1:]
+        if group_name == "all":
+            return None
+
+        if group_name not in ws.groups:
+            raise ValueError(f"Unknown group: {group_name}")
+
+        names.extend(ws.groups[group_name])
+
+    return tuple(dict.fromkeys(names))  # deduplicate, preserve order
 
 
 def get_build_context(project: ProjectConfig, image: ImageConfig) -> Path:

@@ -20,10 +20,10 @@ def get_git_status(repo_path: Path) -> str:
     return result.stdout.strip()
 
 
-def show_status(workspace_root: Path) -> None:
-    """Print git status for the workspace repo (if any) and all subproject repos."""
+def show_status(workspace_root: Path, project_names: tuple[str, ...] | None = None) -> None:
+    """Print git status for the workspace repo (if any) and subproject repos."""
 
-    # Workspace-level repo
+    # Workspace-level repo (always shown)
     if is_git_repo(workspace_root):
         status = get_git_status(workspace_root)
         header = click.style("workspace", bold=True, fg="cyan")
@@ -39,6 +39,9 @@ def show_status(workspace_root: Path) -> None:
         p for p in workspace_root.iterdir()
         if p.is_dir() and not p.name.startswith(".")
     )
+
+    if project_names is not None:
+        subdirs = [d for d in subdirs if d.name in project_names]
 
     repos = [d for d in subdirs if is_git_repo(d)]
 

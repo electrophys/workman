@@ -1,15 +1,22 @@
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from packaging.version import Version
 
 from workman.deps import (
+    OutdatedInfo,
     _is_simple_gte,
     _parse_deps,
     _update_dep_line,
     align_dependencies,
     find_mismatches,
+    find_outdated,
+    get_latest_version,
     highest_minimum,
     scan_dependencies,
+    upgrade_dependencies,
 )
 
 
@@ -192,3 +199,128 @@ class TestAlignDependencies:
 
         assert (tmp_path / "a" / "pyproject.toml").read_text() == original_a
         assert (tmp_path / "b" / "pyproject.toml").read_text() == original_b
+
+
+# ---------------------------------------------------------------------------
+# PyPI outdated / upgrade tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_pypi_response(version: str):
+    """Create a mock urlopen context manager returning a fake PyPI JSON response."""
+    data = json.dumps({"info": {"version": version}}).encode()
+
+    class FakeResponse:
+        def read(self):
+            return data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    return FakeResponse()
+
+
+class TestGetLatestVersion:
+    @patch("workman.deps.urllib.request.urlopen")
+    def test_returns_version(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_pypi_response("2.32.3")
+        result = get_latest_version("requests")
+        assert result == Version("2.32.3")
+
+    @patch("workman.deps.urllib.request.urlopen")
+    def test_returns_none_on_network_error(self, mock_urlopen):
+        mock_urlopen.side_effect = OSError("no network")
+        assert get_latest_version("requests") is None
+
+    @patch("workman.deps.urllib.request.urlopen")
+    def test_returns_none_on_bad_json(self, mock_urlopen):
+        class FakeResponse:
+            def read(self):
+                return b"not json"
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        mock_urlopen.return_value = FakeResponse()
+        assert get_latest_version("requests") is None
+
+
+class TestFindOutdated:
+    @patch("workman.deps.get_latest_version")
+    def test_detects_outdated(self, mock_latest):
+        mock_latest.return_value = Version("2.32.3")
+        packages = {"requests": {"a": ">=2.28.0", "b": ">=2.31.0"}}
+        result = find_outdated(packages)
+        assert "requests" in result
+        assert result["requests"].latest == Version("2.32.3")
+        assert result["requests"].current_min == Version("2.31.0")
+
+    @patch("workman.deps.get_latest_version")
+    def test_skips_up_to_date(self, mock_latest):
+        mock_latest.return_value = Version("8.0.0")
+        packages = {"click": {"a": ">=8.0.0"}}
+        result = find_outdated(packages)
+        assert "click" not in result
+
+    @patch("workman.deps.get_latest_version")
+    def test_skips_when_pypi_fails(self, mock_latest):
+        mock_latest.return_value = None
+        packages = {"click": {"a": ">=7.0"}}
+        result = find_outdated(packages)
+        assert result == {}
+
+    @patch("workman.deps.get_latest_version")
+    def test_skips_bare_names(self, mock_latest):
+        packages = {"click": {"a": ""}}
+        result = find_outdated(packages)
+        assert result == {}
+        mock_latest.assert_not_called()
+
+    @patch("workman.deps.get_latest_version")
+    def test_marks_complex_specifiers(self, mock_latest):
+        mock_latest.return_value = Version("3.0.0")
+        packages = {"pydantic": {"a": ">=2.0,<3.0"}}
+        result = find_outdated(packages)
+        assert "pydantic" in result
+        assert result["pydantic"].simple is False
+
+
+class TestUpgradeDependencies:
+    @patch("workman.deps.get_latest_version")
+    def test_updates_files(self, mock_latest, tmp_path):
+        _make_project(tmp_path, "a", main=["requests>=2.28.0"])
+        _make_project(tmp_path, "b", main=["requests>=2.31.0"])
+
+        packages = {"requests": {"a": ">=2.28.0", "b": ">=2.31.0"}}
+        outdated = {
+            "requests": OutdatedInfo(
+                current_min=Version("2.31.0"),
+                latest=Version("2.32.3"),
+                simple=True,
+            ),
+        }
+        upgrade_dependencies(tmp_path, packages, outdated)
+
+        assert "requests>=2.32.3" in (tmp_path / "a" / "pyproject.toml").read_text()
+        assert "requests>=2.32.3" in (tmp_path / "b" / "pyproject.toml").read_text()
+
+    @patch("workman.deps.get_latest_version")
+    def test_skips_complex_specifiers(self, mock_latest, tmp_path):
+        _make_project(tmp_path, "a", main=["pydantic>=2.0,<3.0"])
+
+        original = (tmp_path / "a" / "pyproject.toml").read_text()
+        packages = {"pydantic": {"a": ">=2.0,<3.0"}}
+        outdated = {
+            "pydantic": OutdatedInfo(
+                current_min=Version("2.0"),
+                latest=Version("3.0.0"),
+                simple=False,
+            ),
+        }
+        upgrade_dependencies(tmp_path, packages, outdated)
+
+        assert (tmp_path / "a" / "pyproject.toml").read_text() == original

@@ -108,6 +108,15 @@ wm deps --fix           # align to the highest >= lower bound
 
 The command scans `pyproject.toml` files for `[project].dependencies`, `[project.optional-dependencies]`, and `[dependency-groups]`. In report mode it shows each package where version specifiers differ. With `--fix`, simple `>=X.Y.Z` specifiers are updated to the highest minimum found; exact pins (`==`) and complex ranges are left alone.
 
+Check PyPI for newer versions of your dependencies:
+
+```bash
+wm deps --outdated      # report packages behind PyPI
+wm deps --upgrade       # bump >= specifiers to latest PyPI versions
+```
+
+`--outdated` queries PyPI for each package and reports where the latest release is newer than the current `>=` lower bound. `--upgrade` does the same but also updates the specifiers in `pyproject.toml`. Complex specifiers (exact pins, upper bounds) are reported but left untouched.
+
 ### Workspace as a git repo
 
 The workspace root can itself be a git repo for tracking workspace configuration (`.workman.yaml`, `.devcontainer/`, VS Code settings, etc.). When it is, `wm status` shows the workspace repo's status first, followed by subproject statuses. Use `wm init` or `wm gitignore` to keep subproject folders excluded.

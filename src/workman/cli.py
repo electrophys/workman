@@ -119,28 +119,52 @@ def clean(ctx: click.Context, projects: tuple[str, ...]) -> None:
 @cli.command()
 @click.argument("projects", nargs=-1)
 @click.option("--fix", is_flag=True, help="Update pyproject.toml files to align versions.")
+@click.option("--outdated", is_flag=True, help="Check PyPI for newer versions.")
+@click.option("--upgrade", is_flag=True, help="Update specifiers to latest PyPI versions.")
 @click.pass_context
-def deps(ctx: click.Context, projects: tuple[str, ...], fix: bool) -> None:
+def deps(
+    ctx: click.Context,
+    projects: tuple[str, ...],
+    fix: bool,
+    outdated: bool,
+    upgrade: bool,
+) -> None:
     """Report and optionally align dependency versions across projects.
 
     Scans pyproject.toml files in subprojects and reports packages where version
     specifiers differ. With --fix, aligns to the highest >= lower bound found.
+
+    Use --outdated to check PyPI for newer versions, or --upgrade to also update
+    the specifiers in pyproject.toml.
 
     Specify projects or @groups. Use @all for everything.
     """
     from workman.deps import (
         align_dependencies,
         find_mismatches,
+        find_outdated,
         scan_dependencies,
+        show_outdated_report,
         show_report,
+        upgrade_dependencies,
     )
 
     ws = load_config(ctx.obj["workspace"])
     names = resolve_projects(ws, projects)
     packages = scan_dependencies(ctx.obj["workspace"], names)
-    mismatches = find_mismatches(packages)
-    show_report(mismatches)
 
-    if fix and mismatches:
-        click.echo("Aligning dependencies:\n")
-        align_dependencies(ctx.obj["workspace"], mismatches)
+    if outdated or upgrade:
+        click.echo("Checking PyPI for updates:\n")
+        outdated_pkgs = find_outdated(packages)
+        show_outdated_report(outdated_pkgs)
+
+        if upgrade and outdated_pkgs:
+            click.echo("Upgrading dependencies:\n")
+            upgrade_dependencies(ctx.obj["workspace"], packages, outdated_pkgs)
+    else:
+        mismatches = find_mismatches(packages)
+        show_report(mismatches)
+
+        if fix and mismatches:
+            click.echo("Aligning dependencies:\n")
+            align_dependencies(ctx.obj["workspace"], mismatches)

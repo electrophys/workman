@@ -114,3 +114,33 @@ def clean(ctx: click.Context, projects: tuple[str, ...]) -> None:
     from workman.cleanup import clean_workspace
 
     clean_workspace(ctx.obj["workspace"], names)
+
+
+@cli.command()
+@click.argument("projects", nargs=-1)
+@click.option("--fix", is_flag=True, help="Update pyproject.toml files to align versions.")
+@click.pass_context
+def deps(ctx: click.Context, projects: tuple[str, ...], fix: bool) -> None:
+    """Report and optionally align dependency versions across projects.
+
+    Scans pyproject.toml files in subprojects and reports packages where version
+    specifiers differ. With --fix, aligns to the highest >= lower bound found.
+
+    Specify projects or @groups. Use @all for everything.
+    """
+    from workman.deps import (
+        align_dependencies,
+        find_mismatches,
+        scan_dependencies,
+        show_report,
+    )
+
+    ws = load_config(ctx.obj["workspace"])
+    names = resolve_projects(ws, projects)
+    packages = scan_dependencies(ctx.obj["workspace"], names)
+    mismatches = find_mismatches(packages)
+    show_report(mismatches)
+
+    if fix and mismatches:
+        click.echo("Aligning dependencies:\n")
+        align_dependencies(ctx.obj["workspace"], mismatches)

@@ -57,6 +57,7 @@ Commands:
   prune      Remove all docker images except the most recent for each project.
   clean      Remove Python build artifacts from all projects.
   gitignore  Update .gitignore to exclude subproject folders.
+  deps       Report and align dependency versions across projects.
 ```
 
 Use `-C` to target a workspace without `cd`-ing into it:
@@ -94,6 +95,18 @@ wm gitignore
 ```
 
 This maintains a managed block in `.gitignore` listing each project folder, while preserving any entries you've added manually.
+
+### Align dependency versions
+
+Check for packages that appear in multiple subprojects at different versions:
+
+```bash
+wm deps                 # report mismatches across all projects
+wm deps @backend        # check only the backend group
+wm deps --fix           # align to the highest >= lower bound
+```
+
+The command scans `pyproject.toml` files for `[project].dependencies`, `[project.optional-dependencies]`, and `[dependency-groups]`. In report mode it shows each package where version specifiers differ. With `--fix`, simple `>=X.Y.Z` specifiers are updated to the highest minimum found; exact pins (`==`) and complex ranges are left alone.
 
 ### Workspace as a git repo
 

@@ -118,6 +118,25 @@ def clean(ctx: click.Context, projects: tuple[str, ...]) -> None:
 
 @cli.command()
 @click.argument("projects", nargs=-1)
+@click.option("--clean", is_flag=True, help="Remove legacy files after migration.")
+@click.pass_context
+def migrate(ctx: click.Context, projects: tuple[str, ...], clean: bool) -> None:
+    """Migrate legacy Python projects to pyproject.toml.
+
+    Parses setup.py, setup.cfg, and requirements.txt to generate a complete
+    pyproject.toml with [project] metadata and [build-system] for hatchling.
+
+    Specify projects or @groups. Use @all for everything.
+    """
+    from workman.migrate import migrate_projects
+
+    ws = load_config(ctx.obj["workspace"])
+    names = resolve_projects(ws, projects)
+    migrate_projects(ctx.obj["workspace"], names, clean=clean)
+
+
+@cli.command()
+@click.argument("projects", nargs=-1)
 @click.option("--fix", is_flag=True, help="Update pyproject.toml files to align versions.")
 @click.option("--outdated", is_flag=True, help="Check PyPI for newer versions.")
 @click.option("--upgrade", is_flag=True, help="Update specifiers to latest PyPI versions.")

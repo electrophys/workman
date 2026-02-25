@@ -18,7 +18,7 @@ uv run wm status     # Example: git status across all subprojects
 
 This is a `uv` project with a `src/` layout. The CLI entry point is `wm = workman.cli:cli` (defined in pyproject.toml).
 
-- **cli.py** — Click group with subcommands: `status`, `init`, `build`, `push`, `prune`, `clean`, `gitignore`, `deps`. Accepts `-C` to override workspace root.
+- **cli.py** — Click group with subcommands: `status`, `init`, `build`, `push`, `prune`, `clean`, `gitignore`, `deps`, `migrate`. Accepts `-C` to override workspace root.
 - **config.py** — Loads `.workman.yaml`, returns `WorkspaceConfig` / `ProjectConfig` / `ImageConfig` dataclasses. Provides `get_docker_projects()`, `get_effective_latest_tag()`, and `resolve_projects()` helpers.
 - **git.py** — `show_status()` shows workspace repo status (if the root is a git repo), then scans subdirectories for `.git/` and runs `git status --short`.
 - **docker.py** — `build_images()`, `push_images()`, `prune_images()`. Tagging uses `YYYYMMDD-N` pattern; N is determined by checking local tags (and registry tags via skopeo if available).
@@ -26,6 +26,7 @@ This is a `uv` project with a `src/` layout. The CLI entry point is `wm = workma
 - **gitignore.py** — `update_gitignore()` manages a block in `.gitignore` to exclude subproject folders from the workspace repo.
 - **init.py** — `init_workspace()` scans subdirectories for Dockerfiles and Docker images, generates `.workman.yaml` and updates `.gitignore`.
 - **deps.py** — `scan_dependencies()` reads `pyproject.toml` files across subprojects, `find_mismatches()` detects version conflicts, `align_dependencies()` updates specifiers to the highest `>=` lower bound. Uses `packaging` library for PEP 508 parsing.
+- **migrate.py** — `migrate_projects()` converts legacy Python projects (setup.py, setup.cfg, requirements.txt) to pyproject.toml. AST-parses setup.py, uses configparser for setup.cfg. Merges with priority order; writes TOML via `tomli_w`.
 
 ## Key Concepts
 

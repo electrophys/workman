@@ -58,6 +58,7 @@ Commands:
   clean      Remove Python build artifacts from all projects.
   gitignore  Update .gitignore to exclude subproject folders.
   deps       Report and align dependency versions across projects.
+  migrate    Migrate legacy Python projects to pyproject.toml.
 ```
 
 Use `-C` to target a workspace without `cd`-ing into it:
@@ -116,6 +117,18 @@ wm deps --upgrade       # bump >= specifiers to latest PyPI versions
 ```
 
 `--outdated` queries PyPI for each package and reports where the latest release is newer than the current `>=` lower bound. `--upgrade` does the same but also updates the specifiers in `pyproject.toml`. Complex specifiers (exact pins, upper bounds) are reported but left untouched.
+
+### Migrate legacy projects
+
+Convert projects that use `setup.py`, `setup.cfg`, or `requirements.txt` to a proper `pyproject.toml`:
+
+```bash
+wm migrate                # migrate all projects with legacy files
+wm migrate svc-api        # migrate a specific project
+wm migrate --clean        # also remove legacy files after migration
+```
+
+The command parses each legacy file and merges the extracted metadata (name, version, dependencies, entry points, etc.) into a `pyproject.toml` with a hatchling build system. When multiple sources exist, priority is: existing `pyproject.toml` > `setup.cfg` > `setup.py` > `requirements.txt`. Fields that can't be statically analyzed (e.g. dynamic versions in `setup.py`) are skipped with a warning.
 
 ### Workspace as a git repo
 
